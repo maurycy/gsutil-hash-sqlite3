@@ -5,7 +5,7 @@ import os
 import sqlite3
 
 parser = argparse.ArgumentParser()
-parser.add_argument('directory', metavar='directory', type=str)
+parser.add_argument('directories', metavar='directory', type=str, nargs='+')
 parser.add_argument('--database', type=str, default='db.sqlite3')
 
 
@@ -41,7 +41,10 @@ CREATE TABLE IF NOT EXISTS files (
 );''')
     con.commit()
 
-    for path in files(os.path.abspath(args.directory)):
-      cur.execute('''INSERT INTO files (path, hash) VALUES (:path, :hash)''', {
-                  'path': path, 'hash': hash(path)})
-      con.commit()
+    for directory in args.directories:
+      for path in files(os.path.abspath(directory)):
+        cur.execute('''INSERT INTO files (path, hash) VALUES (:path, :hash)''', {
+                    'path': path, 'hash': hash(path)})
+        con.commit()
+
+        print(path)
