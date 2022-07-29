@@ -1,2 +1,4 @@
 *.txt
+!requirements.txt
 *.sqlite3
+*.gz
