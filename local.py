@@ -40,10 +40,15 @@ def files(dir):
 if __name__ == '__main__':
     args = parser.parse_args()
 
-    if args.verbose:
-        logging.basicConfig(level='DEBUG')
+    logging.basicConfig(stream=sys.stdout,
+                        format='%(levelname)s %(asctime)s - %(message)s',
+                        level='INFO')
 
-    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+    if args.verbose:
+        logging.basicConfig(stream=sys.stdout,
+                            format='%(levelname)s %(asctime)s - %(message)s',
+                            level='DEBUG',
+                            force=True)
 
     con = sqlite3.connect(args.database)
     cur = con.cursor()
