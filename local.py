@@ -14,7 +14,6 @@ parser.add_argument('--verbose', action=argparse.BooleanOptionalAction)
 
 def hash(path):
     # https://github.com/GoogleCloudPlatform/gsutil/blob/db22c6cf44e4f58a56864f0a6f9bcdf868a3c156/gslib/utils/hashing_helper.py#L376
-    # .encode('base64').strip()
     md5 = hashlib.md5()
 
     with open(path, 'rb') as f:
@@ -24,7 +23,7 @@ def hash(path):
                 break
             md5.update(data)
 
-    return base64.b64encode(md5.digest()).decode('ascii')
+    return base64.b64encode(md5.digest()).rstrip(b'\n').decode('utf-8')
 
 
 def files(dir):
