@@ -1,6 +1,7 @@
 import argparse
 import base64
 import hashlib
+import io
 import logging
 import os
 import sqlite3
@@ -25,7 +26,7 @@ def hash(path):
 
     with open(path, "rb") as f:
         while True:
-            data = f.read(8192)
+            data = f.read(io.DEFAULT_BUFFER_SIZE)
             if not data:
                 break
             md5.update(data)
