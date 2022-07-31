@@ -39,7 +39,7 @@ def hash(m):
     md5 = hashlib.md5()
 
     while True:
-        data = m.read()
+        data = m.read(io.DEFAULT_BUFFER_SIZE)
         if not data:
             break
         md5.update(data)
@@ -52,7 +52,7 @@ def crc(m):
     # https://github.com/GoogleCloudPlatform/gsutil/blob/1df98e8233743fbe2ce1a713aad2dd992edb250a/gslib/commands/hash.py#L165
     crc = crcmod.predefined.Crc("crc-32c")
     while True:
-        data = m.read()
+        data = m.read(io.DEFAULT_BUFFER_SIZE)
         if not data:
             break
         crc.update(data)
