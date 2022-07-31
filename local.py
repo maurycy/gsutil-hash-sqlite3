@@ -3,12 +3,14 @@ import base64
 import hashlib
 import io
 import logging
+import mmap
 import os
 import sqlite3
 import sys
 
 
 class Stats:
+    crcs = 0
     bytes = 0
     exceptions = 0
     files = 0
@@ -29,19 +31,31 @@ report = Report()
 DEFAULT_FILES_BATCH_SIZE = 999
 
 
-def hash(path):
+def hash(m):
     # https://github.com/GoogleCloudPlatform/gsutil/blob/db22c6cf44e4f58a56864f0a6f9bcdf868a3c156/gslib/utils/hashing_helper.py#L376
     md5 = hashlib.md5()
 
-    with open(path, "rb") as f:
-        while True:
-            data = f.read(io.DEFAULT_BUFFER_SIZE)
-            if not data:
-                break
-            md5.update(data)
-            stats.bytes += len(data)
+    while True:
+        data = m.read(io.DEFAULT_BUFFER_SIZE)
+        if not data:
+            break
+        md5.update(data)
+        stats.bytes += len(data)
 
     return base64.b64encode(md5.digest()).rstrip(b"\n").decode("utf-8")
+
+
+def crc(m):
+    # https://github.com/GoogleCloudPlatform/gsutil/blob/1df98e8233743fbe2ce1a713aad2dd992edb250a/gslib/commands/hash.py#L165
+    crc = crcmod.predefined.Crc("crc-32c")
+    while True:
+        data = m.read(io.DEFAULT_BUFFER_SIZE)
+        if not data:
+            break
+        crc.update(data)
+        stats.bytes += len(data)
+
+    return base64.b64encode(crc.digest()).rstrip(b"\n").decode("utf-8")
 
 
 def files(dir):
@@ -63,14 +77,30 @@ def files(dir):
 
 def process_one(path, args, con, cur):
     h = None
+    c = None
 
-    try:
-        h = hash(path)
-    except Exception as e:
-        logging.warning("Failed to hash {}: {}".format(path, str(e)))
-        stats.exceptions += 1
-        report.exceptions.append(e)
-        return
+    with open(path, 'rb') as f:
+        with mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ) as m:
+            try:
+                m.seek(0)
+                h = hash(m)
+                stats.hashes += 1
+            except Exception as e:
+                logging.warning("Failed to hash {}: {}".format(path, str(e)))
+                stats.exceptions += 1
+                report.exceptions.append(e)
+                return
+
+            if args.crc:
+                try:
+                    m.seek(0)
+                    c = crc(m)
+                    stats.crcs += 1
+                except Exception as e:
+                    logging.warning("Failed to crc {}: {}".format(path, str(e)))
+                    stats.exceptions += 1
+                    report.exceptions.append(e)
+                    return
 
     if args.skip_duplicate_file_hashes:
         cur.execute(
@@ -84,12 +114,11 @@ def process_one(path, args, con, cur):
 
     with con:
         cur.execute(
-            """INSERT INTO files (path, hash) VALUES (:path, :hash)""",
-            {"path": path, "hash": hash(path)},
+            """INSERT INTO files (path, hash, crc) VALUES (:path, :hash, :crc)""",
+            {"path": path, "hash": h, "crc": c},
         )
 
-    stats.hashes += 1
-    logging.info("{} {}".format(path, h))
+    logging.info("{} {} {}".format(path, h, c))
 
 
 def process_batch(batch, args, con, cur):
@@ -150,7 +179,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-duplicate-file-hashes", action=argparse.BooleanOptionalAction
     )
-    parser.add_argument("--batch-size", type=int, default=DEFAULT_FILES_BATCH_SIZE)
+    parser.add_argument(
+        "--batch-size", type=int, default=DEFAULT_FILES_BATCH_SIZE
+    )
+    parser.add_argument("--crc", action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
 
@@ -168,6 +200,9 @@ if __name__ == "__main__":
             level="INFO",
         )
 
+    if args.crc:
+        import crcmod
+
     con = sqlite3.connect(args.database)
     cur = con.cursor()
 
@@ -177,7 +212,8 @@ if __name__ == "__main__":
 CREATE TABLE IF NOT EXISTS files (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   path TEXT NOT NULL,
-  hash VARCHAR(24) NOT NULL,
+  hash VARCHAR(24),
+  crc VARCHAR(8),
   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );"""
     )
@@ -190,10 +226,12 @@ CREATE TABLE IF NOT EXISTS files (
 
     if args.summary:
         logging.info(
-            "{} files, {} hashes, {} exceptions {} bytes {} skipped_files {}"
-            " skipped_hashes {} skipped_file_hashes".format(
+            "{} files, {} hashes, {} crcs, {} exceptions, {} bytes, {}"
+            " skipped_files, {} skipped_hashes, {} skipped_file_hashes"
+            .format(
                 stats.files,
                 stats.hashes,
+                stats.crcs,
                 stats.exceptions,
                 stats.bytes,
                 stats.skipped_files,
