@@ -7,11 +7,13 @@ import mmap
 import os
 import sqlite3
 import sys
+import time
 
 
 class Stats:
     crcs = 0
     bytes = 0
+    empty_files = 0
     exceptions = 0
     files = 0
     hashes = 0
@@ -22,6 +24,7 @@ class Stats:
 
 class Report:
     exceptions = []
+    empty_files = []
 
 
 stats = Stats()
@@ -36,7 +39,7 @@ def hash(m):
     md5 = hashlib.md5()
 
     while True:
-        data = m.read(io.DEFAULT_BUFFER_SIZE)
+        data = m.read()
         if not data:
             break
         md5.update(data)
@@ -49,7 +52,7 @@ def crc(m):
     # https://github.com/GoogleCloudPlatform/gsutil/blob/1df98e8233743fbe2ce1a713aad2dd992edb250a/gslib/commands/hash.py#L165
     crc = crcmod.predefined.Crc("crc-32c")
     while True:
-        data = m.read(io.DEFAULT_BUFFER_SIZE)
+        data = m.read()
         if not data:
             break
         crc.update(data)
@@ -61,6 +64,12 @@ def crc(m):
 def files(dir):
     try:
         for entry in os.scandir(dir):
+            if entry.stat().st_size == 0:
+                logging.debug("Skipping empty file: {}".format(entry.path))
+                stats.empty_files += 1
+                report.empty_files.append(entry.path)
+                continue                
+
             if entry.is_file():
                 yield entry.path
             elif entry.is_dir():
@@ -76,14 +85,22 @@ def files(dir):
 
 
 def process_one(path, args, con, cur):
+    logging.debug("Processing file: {}".format(path))
+
     h = None
     c = None
 
     with open(path, 'rb') as f:
         with mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ) as m:
             try:
+                logging.debug("Hashing {}".format(path))
                 m.seek(0)
+
+                start = time.process_time()
                 h = hash(m)
+                end = time.process_time()
+                logging.debug("Hashed {} in {}s".format(path, end - start))
+
                 stats.hashes += 1
             except Exception as e:
                 logging.warning("Failed to hash {}: {}".format(path, str(e)))
@@ -93,8 +110,14 @@ def process_one(path, args, con, cur):
 
             if args.crc:
                 try:
+                    logging.debug("Crcing {}".format(path))
                     m.seek(0)
+
+                    start = time.process_time()
                     c = crc(m)
+                    end = time.process_time()
+                    logging.debug("Crced {} in {}s".format(path, end - start))
+
                     stats.crcs += 1
                 except Exception as e:
                     logging.warning("Failed to crc {}: {}".format(path, str(e)))
@@ -227,7 +250,7 @@ CREATE TABLE IF NOT EXISTS files (
     if args.summary:
         logging.info(
             "{} files, {} hashes, {} crcs, {} exceptions, {} bytes, {}"
-            " skipped_files, {} skipped_hashes, {} skipped_file_hashes"
+            " skipped_files, {} skipped_hashes, {} skipped_file_hashes, {} empty_files"
             .format(
                 stats.files,
                 stats.hashes,
@@ -237,9 +260,11 @@ CREATE TABLE IF NOT EXISTS files (
                 stats.skipped_files,
                 stats.skipped_hashes,
                 stats.skipped_file_hashes,
+                stats.empty_files
             )
         )
 
     if args.report:
         if len(report.exceptions) > 0:
             logging.info("exceptions: {}".format(report.exceptions))
+            logging.info("empty_files: {}".format(report.empty_files))
