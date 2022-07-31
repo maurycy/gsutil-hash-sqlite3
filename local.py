@@ -6,10 +6,15 @@ import os
 import sqlite3
 import sys
 
-parser = argparse.ArgumentParser()
-parser.add_argument('directories', metavar='directory', type=str, nargs='+')
-parser.add_argument('--database', type=str, default='db.sqlite3')
-parser.add_argument('--verbose', action=argparse.BooleanOptionalAction)
+
+class Stats:
+    bytes = 0
+    exceptions = 0
+    files = 0
+    hashes = 0
+
+
+stats = Stats()
 
 
 def hash(path):
@@ -22,6 +27,7 @@ def hash(path):
             if not data:
                 break
             md5.update(data)
+            stats.bytes += len(data)
 
     return base64.b64encode(md5.digest()).rstrip(b'\n').decode('utf-8')
 
@@ -38,6 +44,13 @@ def files(dir):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('directories', metavar='directory',
+                        type=str, nargs='+')
+    parser.add_argument('--database', type=str, default='db.sqlite3')
+    parser.add_argument('--verbose', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--summary', action=argparse.BooleanOptionalAction)
+
     args = parser.parse_args()
 
     logging.basicConfig(stream=sys.stdout,
@@ -65,6 +78,7 @@ CREATE TABLE IF NOT EXISTS files (
     for directory in args.directories:
         for path in files(os.path.abspath(directory)):
             logging.debug(path)
+            stats.files += 1
 
             h = None
 
@@ -72,10 +86,16 @@ CREATE TABLE IF NOT EXISTS files (
                 h = hash(path)
             except Exception as e:
                 logging.warning('Failed to hash {}: {}'.format(path, str(e)))
+                stats.exceptions += 1
                 continue
 
             cur.execute('''INSERT INTO files (path, hash) VALUES (:path, :hash)''', {
                         'path': path, 'hash': hash(path)})
             con.commit()
 
-            logging.info("{} {}".format(path, h))
+            stats.hashes += 1
+            logging.info('{} {}'.format(path, h))
+
+    if args.summary:
+        logging.info('{} files, {} hashes, {} exceptions {} bytes'.format(
+            stats.files, stats.hashes, stats.exceptions, stats.bytes))
