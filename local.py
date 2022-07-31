@@ -102,8 +102,8 @@ def process_batch(batch, args, con, cur):
 
         res = cur.execute(sql, batch)
 
-        duplicate_files = [row[0] for row in res]
-        new_files = list(set(batch) - set(duplicate_files))
+        duplicate_files = set([row[0] for row in res])
+        new_files = list(set(batch) - duplicate_files)
 
         if len(duplicate_files) > 0:
             logging.debug(
@@ -127,7 +127,7 @@ def process_directory(directory, args, con, cur):
         stats.files += 1
 
         files_batch.append(path)
-        if len(files_batch) >= DEFAULT_FILES_BATCH_SIZE:
+        if len(files_batch) >= args.batch_size:
             process_batch(files_batch, args, con, cur)
             files_batch = []
 
@@ -150,6 +150,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-duplicate-file-hashes", action=argparse.BooleanOptionalAction
     )
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_FILES_BATCH_SIZE)
 
     args = parser.parse_args()
 
