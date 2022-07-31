@@ -12,6 +12,8 @@ class Stats:
     exceptions = 0
     files = 0
     hashes = 0
+    skipped_files = 0
+    skipped_hashes = 0
 
 
 stats = Stats()
@@ -50,6 +52,10 @@ if __name__ == '__main__':
     parser.add_argument('--database', type=str, default='db.sqlite3')
     parser.add_argument('--verbose', action=argparse.BooleanOptionalAction)
     parser.add_argument('--summary', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--skip-duplicate-files',
+                        action=argparse.BooleanOptionalAction)
+    parser.add_argument('--skip-duplicate-hashes',
+                        action=argparse.BooleanOptionalAction)
 
     args = parser.parse_args()
 
@@ -80,6 +86,14 @@ CREATE TABLE IF NOT EXISTS files (
             logging.debug(path)
             stats.files += 1
 
+            if args.skip_duplicate_files:
+                cur.execute(
+                    'SELECT hash FROM files WHERE path = :path', {'path': path})
+                if cur.fetchone():
+                    logging.debug('Skipping duplicate file: {}'.format(path))
+                    stats.skipped_files += 1
+                    continue
+
             h = None
 
             try:
@@ -89,6 +103,14 @@ CREATE TABLE IF NOT EXISTS files (
                 stats.exceptions += 1
                 continue
 
+            if args.skip_duplicate_hashes:
+                cur.execute(
+                    'SELECT id FROM files WHERE hash = :hash', {'hash': h})
+                if cur.fetchone():
+                    logging.debug('Skipping duplicate hash: {}'.format(h))
+                    stats.skipped_hashes += 1
+                    continue
+
             cur.execute('''INSERT INTO files (path, hash) VALUES (:path, :hash)''', {
                         'path': path, 'hash': hash(path)})
             con.commit()
@@ -97,5 +119,5 @@ CREATE TABLE IF NOT EXISTS files (
             logging.info('{} {}'.format(path, h))
 
     if args.summary:
-        logging.info('{} files, {} hashes, {} exceptions {} bytes'.format(
-            stats.files, stats.hashes, stats.exceptions, stats.bytes))
+        logging.info('{} files, {} hashes, {} exceptions {} bytes {} skipped_files {} skipped_hashes'.format(
+            stats.files, stats.hashes, stats.exceptions, stats.bytes, stats.skipped_files, stats.skipped_hashes))
