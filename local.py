@@ -132,6 +132,7 @@ if __name__ == "__main__":
     parser.add_argument("--database", type=str, default="db.sqlite3")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction)
     parser.add_argument("--summary", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--report", action=argparse.BooleanOptionalAction)
     parser.add_argument(
         "--skip-duplicate-files", action=argparse.BooleanOptionalAction
     )
@@ -204,5 +205,6 @@ CREATE TABLE IF NOT EXISTS files (
             )
         )
 
+    if args.report:
         if len(report.exceptions) > 0:
             logging.info("exceptions: {}".format(report.exceptions))
