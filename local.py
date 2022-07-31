@@ -167,7 +167,8 @@ if __name__ == "__main__":
 CREATE TABLE IF NOT EXISTS files (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   path text NOT NULL,
-  hash text NOT NULL
+  hash text NOT NULL,
+  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );"""
     )
     con.commit()
