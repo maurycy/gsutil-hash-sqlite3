@@ -61,6 +61,44 @@ def files(dir):
         return
 
 
+def process_one(path, args, con, cur):
+    h = None
+
+    try:
+        h = hash(path)
+    except Exception as e:
+        logging.warning("Failed to hash {}: {}".format(path, str(e)))
+        stats.exceptions += 1
+        report.exceptions.append(e)
+        return
+
+    if args.skip_duplicate_hashes:
+        cur.execute("SELECT id FROM files WHERE hash = :hash", {"hash": h})
+        if cur.fetchone():
+            logging.debug("Skipping duplicate hash: {}".format(h))
+            stats.skipped_hashes += 1
+            return
+
+    if args.skip_duplicate_file_hashes:
+        cur.execute(
+            "SELECT id FROM files WHERE path = :path AND hash = :hash",
+            {"path": path, "hash": h},
+        )
+        if cur.fetchone():
+            logging.debug("Skipping duplicate file hash: {}".format(h))
+            stats.skipped_file_hashes += 1
+            return
+
+    with con:
+        cur.execute(
+            """INSERT INTO files (path, hash) VALUES (:path, :hash)""",
+            {"path": path, "hash": hash(path)},
+        )
+
+    stats.hashes += 1
+    logging.info("{} {}".format(path, h))
+
+
 def process_batch(batch, args, con, cur):
     new_files = []
 
@@ -85,43 +123,22 @@ def process_batch(batch, args, con, cur):
         new_files = batch
 
     for path in new_files:
-        h = None
+        process_one(path, args, con, cur)
 
-        try:
-            h = hash(path)
-        except Exception as e:
-            logging.warning("Failed to hash {}: {}".format(path, str(e)))
-            stats.exceptions += 1
-            report.exceptions.append(e)
-            continue
+def process_directory(directory, args, con, cur):
+    files_batch = []
 
-        if args.skip_duplicate_hashes:
-            cur.execute(
-                "SELECT id FROM files WHERE hash = :hash", {"hash": h}
-            )
-            if cur.fetchone():
-                logging.debug("Skipping duplicate hash: {}".format(h))
-                stats.skipped_hashes += 1
-                continue
+    for path in files(os.path.abspath(directory)):
+        logging.debug(path)
+        stats.files += 1
 
-        if args.skip_duplicate_file_hashes:
-            cur.execute(
-                "SELECT id FROM files WHERE path = :path AND hash = :hash",
-                {"path": path, "hash": h},
-            )
-            if cur.fetchone():
-                logging.debug("Skipping duplicate file hash: {}".format(h))
-                stats.skipped_file_hashes += 1
-                continue
+        files_batch.append(path)
+        if len(files_batch) >= DEFAULT_FILES_BATCH_SIZE:
+            process_batch(files_batch, args, con, cur)
+            files_batch = []
 
-        with con:
-            cur.execute(
-                """INSERT INTO files (path, hash) VALUES (:path, :hash)""",
-                {"path": path, "hash": hash(path)},
-            )
-
-        stats.hashes += 1
-        logging.info("{} {}".format(path, h))
+    if len(files_batch) > 0:
+        process_batch(files_batch, args, con, cur)    
 
 
 if __name__ == "__main__":
@@ -174,20 +191,8 @@ CREATE TABLE IF NOT EXISTS files (
     )
     con.commit()
 
-    files_batch = []
-
     for directory in args.directories:
-        for path in files(os.path.abspath(directory)):
-            logging.debug(path)
-            stats.files += 1
-
-            files_batch.append(path)
-            if len(files_batch) >= DEFAULT_FILES_BATCH_SIZE:
-                process_batch(files_batch, args, con, cur)
-                files_batch = []
-
-        if len(files_batch) > 0:
-            process_batch(files_batch, args, con, cur)
+        process_directory(directory, args, con, cur)
 
     con.close()
 
