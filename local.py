@@ -55,7 +55,7 @@ def files(dir):
                 logging.warning("Unknown entry type: {}".format(entry.path))
                 continue
     except Exception as e:
-        logging.warning("Failed to scandir {}: {}".format(path, str(e)))
+        logging.warning("Failed to scandir {}: {}".format(dir, str(e)))
         stats.exceptions += 1
         report.exceptions.append(e)
         return
@@ -125,6 +125,7 @@ def process_batch(batch, args, con, cur):
     for path in new_files:
         process_one(path, args, con, cur)
 
+
 def process_directory(directory, args, con, cur):
     files_batch = []
 
@@ -138,7 +139,7 @@ def process_directory(directory, args, con, cur):
             files_batch = []
 
     if len(files_batch) > 0:
-        process_batch(files_batch, args, con, cur)    
+        process_batch(files_batch, args, con, cur)
 
 
 if __name__ == "__main__":
