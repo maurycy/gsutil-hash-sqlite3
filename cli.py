@@ -11,7 +11,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["count"])
     parser.add_argument("--database", type=str, default="db.sqlite3")
-    parser.add_argument("--include", metavar="substring", type=str)
+    parser.add_argument("--include", dest="substring", type=str)
 
     args = parser.parse_args()
 

@@ -14,10 +14,19 @@ class Stats:
     files = 0
     hashes = 0
     skipped_files = 0
+    skipped_file_hashes = 0
     skipped_hashes = 0
 
 
+class Report:
+    exceptions = []
+
+
 stats = Stats()
+report = Report()
+
+# https://www.sqlite.org/c3ref/c_limit_attached.html#sqlitelimitvariablenumber
+DEFAULT_FILES_BATCH_SIZE = 999
 
 
 def hash(path):
@@ -36,14 +45,83 @@ def hash(path):
 
 
 def files(dir):
-    for entry in os.scandir(dir):
-        if entry.is_file():
-            yield entry.path
-        elif entry.is_dir():
-            yield from files(entry.path)
-        else:
-            logging.warning("Unknown entry type: {}".format(entry.path))
+    try:
+        for entry in os.scandir(dir):
+            if entry.is_file():
+                yield entry.path
+            elif entry.is_dir():
+                yield from files(entry.path)
+            else:
+                logging.warning("Unknown entry type: {}".format(entry.path))
+                continue
+    except Exception as e:
+        logging.warning("Failed to scandir {}: {}".format(path, str(e)))
+        stats.exceptions += 1
+        report.exceptions.append(e)
+        return
+
+
+def process_batch(batch, args, con, cur):
+    new_files = []
+
+    if args.skip_duplicate_files:
+        sql = "SELECT path FROM files WHERE path IN ({seq})".format(
+            seq=",".join(["?"] * len(batch))
+        )
+
+        res = cur.execute(sql, batch)
+
+        duplicate_files = [row[0] for row in res]
+        new_files = list(set(batch) - set(duplicate_files))
+
+        if len(duplicate_files) > 0:
+            logging.debug(
+                "Skipping duplicate file: {}".format(duplicate_files)
+            )
+            stats.skipped_files += len(duplicate_files)
+
+        new_files = new_files
+    else:
+        new_files = batch
+
+    for path in new_files:
+        h = None
+
+        try:
+            h = hash(path)
+        except Exception as e:
+            logging.warning("Failed to hash {}: {}".format(path, str(e)))
+            stats.exceptions += 1
+            report.exceptions.append(e)
             continue
+
+        if args.skip_duplicate_hashes:
+            cur.execute(
+                "SELECT id FROM files WHERE hash = :hash", {"hash": h}
+            )
+            if cur.fetchone():
+                logging.debug("Skipping duplicate hash: {}".format(h))
+                stats.skipped_hashes += 1
+                continue
+
+        if args.skip_duplicate_file_hashes:
+            cur.execute(
+                "SELECT id FROM files WHERE path = :path AND hash = :hash",
+                {"path": path, "hash": h},
+            )
+            if cur.fetchone():
+                logging.debug("Skipping duplicate file hash: {}".format(h))
+                stats.skipped_file_hashes += 1
+                continue
+
+        with con:
+            cur.execute(
+                """INSERT INTO files (path, hash) VALUES (:path, :hash)""",
+                {"path": path, "hash": hash(path)},
+            )
+
+        stats.hashes += 1
+        logging.info("{} {}".format(path, h))
 
 
 if __name__ == "__main__":
@@ -60,14 +138,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-duplicate-hashes", action=argparse.BooleanOptionalAction
     )
+    parser.add_argument(
+        "--skip-duplicate-file-hashes", action=argparse.BooleanOptionalAction
+    )
 
     args = parser.parse_args()
-
-    logging.basicConfig(
-        stream=sys.stdout,
-        format="%(levelname)s %(asctime)s - %(message)s",
-        level="INFO",
-    )
 
     if args.verbose:
         logging.basicConfig(
@@ -75,6 +150,12 @@ if __name__ == "__main__":
             format="%(levelname)s %(asctime)s - %(message)s",
             level="DEBUG",
             force=True,
+        )
+    else:
+        logging.basicConfig(
+            stream=sys.stdout,
+            format="%(levelname)s %(asctime)s - %(message)s",
+            level="INFO",
         )
 
     con = sqlite3.connect(args.database)
@@ -91,59 +172,36 @@ CREATE TABLE IF NOT EXISTS files (
     )
     con.commit()
 
+    files_batch = []
+
     for directory in args.directories:
         for path in files(os.path.abspath(directory)):
             logging.debug(path)
             stats.files += 1
 
-            if args.skip_duplicate_files:
-                cur.execute(
-                    "SELECT hash FROM files WHERE path = :path",
-                    {"path": path},
-                )
-                if cur.fetchone():
-                    logging.debug("Skipping duplicate file: {}".format(path))
-                    stats.skipped_files += 1
-                    continue
+            files_batch.append(path)
+            if len(files_batch) >= DEFAULT_FILES_BATCH_SIZE:
+                process_batch(files_batch, args, con, cur)
+                files_batch = []
 
-            h = None
-
-            try:
-                h = hash(path)
-            except Exception as e:
-                logging.warning("Failed to hash {}: {}".format(path, str(e)))
-                stats.exceptions += 1
-                continue
-
-            if args.skip_duplicate_hashes:
-                cur.execute(
-                    "SELECT id FROM files WHERE hash = :hash", {"hash": h}
-                )
-                if cur.fetchone():
-                    logging.debug("Skipping duplicate hash: {}".format(h))
-                    stats.skipped_hashes += 1
-                    continue
-
-            cur.execute(
-                """INSERT INTO files (path, hash) VALUES (:path, :hash)""",
-                {"path": path, "hash": hash(path)},
-            )
-            con.commit()
-
-            stats.hashes += 1
-            logging.info("{} {}".format(path, h))
+        if len(files_batch) > 0:
+            process_batch(files_batch, args, con, cur)
 
     con.close()
 
     if args.summary:
         logging.info(
             "{} files, {} hashes, {} exceptions {} bytes {} skipped_files {}"
-            " skipped_hashes".format(
+            " skipped_hashes {} skipped_file_hashes".format(
                 stats.files,
                 stats.hashes,
                 stats.exceptions,
                 stats.bytes,
                 stats.skipped_files,
                 stats.skipped_hashes,
+                stats.skipped_file_hashes,
             )
         )
+
+        if len(report.exceptions) > 0:
+            logging.info("exceptions: {}".format(report.exceptions))
