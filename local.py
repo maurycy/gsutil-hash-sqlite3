@@ -13,6 +13,7 @@ import time
 class Stats:
     crcs = 0
     bytes = 0
+    dropbox_content_hashes = 0
     empty_files = 0
     exceptions = 0
     files = 0
@@ -32,6 +33,19 @@ report = Report()
 
 # https://www.sqlite.org/c3ref/c_limit_attached.html#sqlitelimitvariablenumber
 DEFAULT_FILES_BATCH_SIZE = 999
+
+
+def dropbox_content_hash(m):
+    # https://github.com/dropbox/dropbox-api-content-hasher/blob/master/python/hash_file.py#L17
+    hasher = dropbox_content_hasher.DropboxContentHasher()
+
+    while True:
+        data = m.read(io.DEFAULT_BUFFER_SIZE)
+        if len(data) == 0:
+            break
+        hasher.update(data)
+
+    return hasher.hexdigest()
 
 
 def hash(m):
@@ -68,7 +82,7 @@ def files(dir):
                 logging.debug("Skipping empty file: {}".format(entry.path))
                 stats.empty_files += 1
                 report.empty_files.append(entry.path)
-                continue                
+                continue
 
             if entry.is_file():
                 yield entry.path
@@ -89,8 +103,9 @@ def process_one(path, args, con, cur):
 
     h = None
     c = None
+    d = None
 
-    with open(path, 'rb') as f:
+    with open(path, "rb") as f:
         with mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ) as m:
             try:
                 logging.debug("Hashing {}".format(path))
@@ -120,7 +135,34 @@ def process_one(path, args, con, cur):
 
                     stats.crcs += 1
                 except Exception as e:
-                    logging.warning("Failed to crc {}: {}".format(path, str(e)))
+                    logging.warning(
+                        "Failed to crc {}: {}".format(path, str(e))
+                    )
+                    stats.exceptions += 1
+                    report.exceptions.append(e)
+                    return
+
+            if args.dropbox_content_hash:
+                try:
+                    logging.debug("Dropbox content hashing {}".format(path))
+                    m.seek(0)
+
+                    start = time.process_time()
+                    d = dropbox_content_hash(m)
+                    end = time.process_time()
+                    logging.debug(
+                        "Dropbox content hashed {} in {}s".format(
+                            path, end - start
+                        )
+                    )
+
+                    stats.dropbox_content_hashes += 1
+                except Exception as e:
+                    logging.warning(
+                        "Failed to dropbox content hash {}: {}".format(
+                            path, str(e)
+                        )
+                    )
                     stats.exceptions += 1
                     report.exceptions.append(e)
                     return
@@ -137,11 +179,11 @@ def process_one(path, args, con, cur):
 
     with con:
         cur.execute(
-            """INSERT INTO files (path, hash, crc) VALUES (:path, :hash, :crc)""",
-            {"path": path, "hash": h, "crc": c},
+            """INSERT INTO files (path, hash, crc, dropbox_content_hash) VALUES (:path, :hash, :crc, :dropbox_content_hash)""",
+            {"path": path, "hash": h, "crc": c, "dropbox_content_hash": d},
         )
 
-    logging.info("{} {} {}".format(path, h, c))
+    logging.info("{} {} {} {}".format(path, h, c, d))
 
 
 def process_batch(batch, args, con, cur):
@@ -205,7 +247,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch-size", type=int, default=DEFAULT_FILES_BATCH_SIZE
     )
-    parser.add_argument("--crc", action=argparse.BooleanOptionalAction)
+    parser.add_argument(
+        "--crc", action=argparse.BooleanOptionalAction, default=True
+    )
+    parser.add_argument(
+        "--dropbox-content-hash",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
 
     args = parser.parse_args()
 
@@ -225,6 +274,8 @@ if __name__ == "__main__":
 
     if args.crc:
         import crcmod
+    if args.dropbox_content_hash:
+        import dropbox_content_hasher
 
     con = sqlite3.connect(args.database)
     cur = con.cursor()
@@ -237,6 +288,7 @@ CREATE TABLE IF NOT EXISTS files (
   path TEXT NOT NULL,
   hash VARCHAR(24),
   crc VARCHAR(8),
+  dropbox_content_hash VARCHAR(64),
   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );"""
     )
@@ -249,18 +301,19 @@ CREATE TABLE IF NOT EXISTS files (
 
     if args.summary:
         logging.info(
-            "{} files, {} hashes, {} crcs, {} exceptions, {} bytes, {}"
-            " skipped_files, {} skipped_hashes, {} skipped_file_hashes, {} empty_files"
-            .format(
+            "{} files, {} hashes, {} crcs, {} dropbox_content_hashes, {}"
+            " exceptions, {} bytes, {} skipped_files, {} skipped_hashes, {}"
+            " skipped_file_hashes, {} empty_files".format(
                 stats.files,
                 stats.hashes,
                 stats.crcs,
+                stats.dropbox_content_hashes,
                 stats.exceptions,
                 stats.bytes,
                 stats.skipped_files,
                 stats.skipped_hashes,
                 stats.skipped_file_hashes,
-                stats.empty_files
+                stats.empty_files,
             )
         )
 
