@@ -2,3 +2,4 @@
 !requirements.txt
 *.sqlite3
 *.gz
+.vscode/
