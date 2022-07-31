@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS files (
             stats.hashes += 1
             logging.info('{} {}'.format(path, h))
 
+    con.close()
+
     if args.summary:
         logging.info('{} files, {} hashes, {} exceptions {} bytes {} skipped_files {} skipped_hashes'.format(
             stats.files, stats.hashes, stats.exceptions, stats.bytes, stats.skipped_files, stats.skipped_hashes))
