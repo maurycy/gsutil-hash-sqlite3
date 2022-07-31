@@ -72,13 +72,6 @@ def process_one(path, args, con, cur):
         report.exceptions.append(e)
         return
 
-    if args.skip_duplicate_hashes:
-        cur.execute("SELECT id FROM files WHERE hash = :hash", {"hash": h})
-        if cur.fetchone():
-            logging.debug("Skipping duplicate hash: {}".format(h))
-            stats.skipped_hashes += 1
-            return
-
     if args.skip_duplicate_file_hashes:
         cur.execute(
             "SELECT id FROM files WHERE path = :path AND hash = :hash",
@@ -155,9 +148,6 @@ if __name__ == "__main__":
         "--skip-duplicate-files", action=argparse.BooleanOptionalAction
     )
     parser.add_argument(
-        "--skip-duplicate-hashes", action=argparse.BooleanOptionalAction
-    )
-    parser.add_argument(
         "--skip-duplicate-file-hashes", action=argparse.BooleanOptionalAction
     )
 
@@ -185,8 +175,8 @@ if __name__ == "__main__":
         """
 CREATE TABLE IF NOT EXISTS files (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  path text NOT NULL,
-  hash text NOT NULL,
+  path TEXT NOT NULL,
+  hash VARCHAR(24) NOT NULL,
   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );"""
     )
