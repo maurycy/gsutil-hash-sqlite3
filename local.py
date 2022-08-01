@@ -1,13 +1,14 @@
 import argparse
-import base64
-import hashlib
-import io
 import logging
 import mmap
 import os
 import sqlite3
 import sys
 import time
+
+import hash.dropbox_content_hash
+import hash.crc
+import hash.md5
 
 
 class Stats:
@@ -33,46 +34,6 @@ report = Report()
 
 # https://www.sqlite.org/c3ref/c_limit_attached.html#sqlitelimitvariablenumber
 DEFAULT_FILES_BATCH_SIZE = 999
-
-
-def dropbox_content_hash(m):
-    # https://github.com/dropbox/dropbox-api-content-hasher/blob/master/python/hash_file.py#L17
-    hasher = dropbox_content_hasher.DropboxContentHasher()
-
-    while True:
-        data = m.read(io.DEFAULT_BUFFER_SIZE)
-        if len(data) == 0:
-            break
-        hasher.update(data)
-
-    return hasher.hexdigest()
-
-
-def hash(m):
-    # https://github.com/GoogleCloudPlatform/gsutil/blob/db22c6cf44e4f58a56864f0a6f9bcdf868a3c156/gslib/utils/hashing_helper.py#L376
-    md5 = hashlib.md5()
-
-    while True:
-        data = m.read(io.DEFAULT_BUFFER_SIZE)
-        if not data:
-            break
-        md5.update(data)
-        stats.bytes += len(data)
-
-    return base64.b64encode(md5.digest()).rstrip(b"\n").decode("utf-8")
-
-
-def crc(m):
-    # https://github.com/GoogleCloudPlatform/gsutil/blob/1df98e8233743fbe2ce1a713aad2dd992edb250a/gslib/commands/hash.py#L165
-    crc = crcmod.predefined.Crc("crc-32c")
-    while True:
-        data = m.read(io.DEFAULT_BUFFER_SIZE)
-        if not data:
-            break
-        crc.update(data)
-        stats.bytes += len(data)
-
-    return base64.b64encode(crc.digest()).rstrip(b"\n").decode("utf-8")
 
 
 def files(dir):
@@ -112,11 +73,12 @@ def process_one(path, args, con, cur):
                 m.seek(0)
 
                 start = time.process_time()
-                h = hash(m)
+                h, bytes = hash.md5.hash(m)
                 end = time.process_time()
                 logging.debug("Hashed {} in {}s".format(path, end - start))
 
                 stats.hashes += 1
+                stats.bytes += bytes
             except Exception as e:
                 logging.warning("Failed to hash {}: {}".format(path, str(e)))
                 stats.exceptions += 1
@@ -129,11 +91,12 @@ def process_one(path, args, con, cur):
                     m.seek(0)
 
                     start = time.process_time()
-                    c = crc(m)
+                    c, bytes = hash.crc.hash(m)
                     end = time.process_time()
                     logging.debug("Crced {} in {}s".format(path, end - start))
 
                     stats.crcs += 1
+                    stats.bytes += bytes
                 except Exception as e:
                     logging.warning(
                         "Failed to crc {}: {}".format(path, str(e))
@@ -148,7 +111,7 @@ def process_one(path, args, con, cur):
                     m.seek(0)
 
                     start = time.process_time()
-                    d = dropbox_content_hash(m)
+                    d, bytes = hash.dropbox_content_hash.hash(m)
                     end = time.process_time()
                     logging.debug(
                         "Dropbox content hashed {} in {}s".format(
@@ -157,6 +120,7 @@ def process_one(path, args, con, cur):
                     )
 
                     stats.dropbox_content_hashes += 1
+                    stats.bytes += bytes
                 except Exception as e:
                     logging.warning(
                         "Failed to dropbox content hash {}: {}".format(
@@ -271,11 +235,6 @@ if __name__ == "__main__":
             format="%(levelname)s %(asctime)s - %(message)s",
             level="INFO",
         )
-
-    if args.crc:
-        import crcmod
-    if args.dropbox_content_hash:
-        import dropbox_content_hasher
 
     con = sqlite3.connect(args.database)
     cur = con.cursor()

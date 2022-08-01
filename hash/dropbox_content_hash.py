@@ -7,8 +7,22 @@ from __future__ import (
 
 import hashlib
 import six
+import io
 
 
+# Copyright (c) 2017 Dropbox, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 class DropboxContentHasher(object):
     """
     Computes a hash using the same algorithm that the Dropbox API uses for the
@@ -154,3 +168,23 @@ class StreamHasher(object):
         for b in bs:
             self._hasher.update(b)
         return b
+
+
+# https://www.dropbox.com/developers/reference/content-hash
+DESCRIPTION = "Dropbox Content Hash"
+
+
+def hash(m):
+    # https://github.com/dropbox/dropbox-api-content-hasher/blob/master/python/hash_file.py#L17
+    hasher = DropboxContentHasher()
+
+    bytes = 0
+
+    while True:
+        data = m.read(io.DEFAULT_BUFFER_SIZE)
+        if len(data) == 0:
+            break
+        hasher.update(data)
+        bytes += len(data)
+
+    return (hasher.hexdigest(), bytes)
