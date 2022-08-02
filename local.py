@@ -7,7 +7,7 @@ import sys
 import time
 
 import hash.dropbox_content_hash
-import hash.crc
+import hash.crc32
 import hash.md5
 
 
@@ -91,7 +91,7 @@ def process_one(path, args, con, cur):
                     m.seek(0)
 
                     start = time.process_time()
-                    c, bytes = hash.crc.hash(m)
+                    c, bytes = hash.crc32.hash(m)
                     end = time.process_time()
                     logging.debug("Crced {} in {}s".format(path, end - start))
 
