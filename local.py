@@ -70,22 +70,27 @@ def process_one(path, ctime, mtime, args, con, cur):
 
     with open(path, "rb") as f:
         with mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ) as m:
-            try:
-                logging.debug("Hashing {}".format(path))
-                m.seek(0)
+            if args.hash:
+                try:
+                    logging.debug("Hashing {}".format(path))
+                    m.seek(0)
 
-                start = time.process_time()
-                h, bytes = hash.md5.hash(m)
-                end = time.process_time()
-                logging.debug("Hashed {} in {}s".format(path, end - start))
+                    start = time.process_time()
+                    h, bytes = hash.md5.hash(m)
+                    end = time.process_time()
+                    logging.debug(
+                        "Hashed {} in {}s".format(path, end - start)
+                    )
 
-                stats.hashes += 1
-                stats.bytes += bytes
-            except Exception as e:
-                logging.warning("Failed to hash {}: {}".format(path, str(e)))
-                stats.exceptions += 1
-                report.exceptions.append(e)
-                return
+                    stats.hashes += 1
+                    stats.bytes += bytes
+                except Exception as e:
+                    logging.warning(
+                        "Failed to hash {}: {}".format(path, str(e))
+                    )
+                    stats.exceptions += 1
+                    report.exceptions.append(e)
+                    return
 
             if args.crc:
                 try:
@@ -133,7 +138,7 @@ def process_one(path, ctime, mtime, args, con, cur):
                     report.exceptions.append(e)
                     return
 
-    if args.skip_duplicate_file_hashes:
+    if args.skip_duplicate_file_hashes and args.hash:
         cur.execute(
             "SELECT id FROM files WHERE path = :path AND hash = :hash",
             {"path": path, "hash": h},
@@ -219,6 +224,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--batch-size", type=int, default=DEFAULT_FILES_BATCH_SIZE
+    )
+    parser.add_argument(
+        "--hash", action=argparse.BooleanOptionalAction, default=True
     )
     parser.add_argument(
         "--crc", action=argparse.BooleanOptionalAction, default=True
