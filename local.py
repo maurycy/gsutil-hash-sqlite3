@@ -46,7 +46,9 @@ def files(dir):
                 continue
 
             if entry.is_file():
-                yield entry.path
+                ctime = entry.stat().st_ctime if args.ctime else None
+                mtime = entry.stat().st_mtime if args.mtime else None
+                yield entry.path, ctime, mtime
             elif entry.is_dir():
                 yield from files(entry.path)
             else:
@@ -59,7 +61,7 @@ def files(dir):
         return
 
 
-def process_one(path, args, con, cur):
+def process_one(path, ctime, mtime, args, con, cur):
     logging.debug("Processing file: {}".format(path))
 
     h = None
@@ -141,10 +143,22 @@ def process_one(path, args, con, cur):
             stats.skipped_file_hashes += 1
             return
 
+    if not args.ctime:
+        ctime = None
+    if not args.mtime:
+        mtime = None
+
     with con:
         cur.execute(
-            """INSERT INTO files (path, hash, crc, dropbox_content_hash) VALUES (:path, :hash, :crc, :dropbox_content_hash)""",
-            {"path": path, "hash": h, "crc": c, "dropbox_content_hash": d},
+            """INSERT INTO files (path, hash, crc, dropbox_content_hash, ctime, mtime) VALUES (:path, :hash, :crc, :dropbox_content_hash, :ctime, :mtime)""",
+            {
+                "path": path,
+                "hash": h,
+                "crc": c,
+                "dropbox_content_hash": d,
+                "ctime": ctime,
+                "mtime": mtime,
+            },
         )
 
     logging.info("{} {} {} {}".format(path, h, c, d))
@@ -173,8 +187,8 @@ def process_batch(batch, args, con, cur):
     else:
         new_files = batch
 
-    for path in new_files:
-        process_one(path, args, con, cur)
+    for path, mtime, ctime in new_files:
+        process_one(path, mtime, ctime, args, con, cur)
 
 
 def process_directory(directory, args, con, cur):
@@ -219,6 +233,12 @@ if __name__ == "__main__":
         action=argparse.BooleanOptionalAction,
         default=True,
     )
+    parser.add_argument(
+        "--mtime", action=argparse.BooleanOptionalAction, default=True
+    )
+    parser.add_argument(
+        "--ctime", action=argparse.BooleanOptionalAction, default=True
+    )
 
     args = parser.parse_args()
 
@@ -248,10 +268,33 @@ CREATE TABLE IF NOT EXISTS files (
   hash VARCHAR(24),
   crc VARCHAR(8),
   dropbox_content_hash VARCHAR(64),
+  mtime INTEGER,
+  ctime INTEGER,
   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );"""
     )
     con.commit()
+
+    # Run the migrations.
+    try:
+        cur.execute(
+            """
+ALTER TABLE files ADD COLUMN mtime INTEGER;
+        """
+        )
+        con.commit()
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cur.execute(
+            """
+ALTER TABLE files ADD COLUMN ctime INTEGER;
+        """
+        )
+        con.commit()
+    except sqlite3.OperationalError:
+        pass
 
     for directory in args.directories:
         process_directory(directory, args, con, cur)
