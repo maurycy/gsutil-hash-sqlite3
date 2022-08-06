@@ -143,11 +143,6 @@ def process_one(path, ctime, mtime, args, con, cur):
             stats.skipped_file_hashes += 1
             return
 
-    if not args.ctime:
-        ctime = None
-    if not args.mtime:
-        mtime = None
-
     with con:
         cur.execute(
             """INSERT INTO files (path, hash, crc, dropbox_content_hash, ctime, mtime) VALUES (:path, :hash, :crc, :dropbox_content_hash, :ctime, :mtime)""",
