@@ -294,6 +294,7 @@ ALTER TABLE files ADD COLUMN ctime INTEGER;
     for directory in args.directories:
         process_directory(directory, args, con, cur)
 
+    con.commit()
     con.close()
 
     if args.summary:
