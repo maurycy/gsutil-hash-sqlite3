@@ -18,7 +18,7 @@ class Stats:
     dropbox_content_hashes = 0
     empty_files = 0
     exceptions = 0
-    files = 0
+    processed_files = 0
     hashes = 0
     skipped_files = 0
     skipped_file_hashes = 0
@@ -162,6 +162,7 @@ def process_one(path, stat, args, con, cur):
             },
         )
 
+    stats.processed_files += 1
     logging.info("{} {} {} {}".format(path, h, c, d))
 
 
@@ -209,7 +210,6 @@ def process_directory(directory, args, con, cur):
 
     for file in files(os.path.abspath(directory)):
         logging.debug(file)
-        stats.files += 1
 
         files_batch.append(file)
         if len(files_batch) >= args.batch_size:
@@ -217,7 +217,6 @@ def process_directory(directory, args, con, cur):
             files_batch = []
 
     if len(files_batch) > 0:
-        stats.files += len(files_batch)
         process_batch(files_batch, args, con, cur)
 
 
@@ -328,10 +327,11 @@ ALTER TABLE files ADD COLUMN ctime INTEGER;
 
     if args.summary:
         logging.info(
-            "{} files, {} hashes, {} crcs, {} dropbox_content_hashes, {}"
-            " exceptions, {} bytes, {} skipped_files, {} skipped_hashes, {}"
-            " skipped_file_hashes, {} empty_files".format(
-                stats.files,
+            "{} processed_files, {} hashes, {} crcs, {}"
+            " dropbox_content_hashes, {} exceptions, {} bytes, {}"
+            " skipped_files, {} skipped_hashes, {} skipped_file_hashes, {}"
+            " empty_files".format(
+                stats.processed_files,
                 stats.hashes,
                 stats.crcs,
                 stats.dropbox_content_hashes,
