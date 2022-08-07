@@ -40,16 +40,8 @@ DEFAULT_FILES_BATCH_SIZE = 999
 def files(dir):
     try:
         for entry in os.scandir(dir):
-            if entry.stat().st_size == 0:
-                logging.debug("Skipping empty file: {}".format(entry.path))
-                stats.empty_files += 1
-                report.empty_files.append(entry.path)
-                continue
-
             if entry.is_file():
-                ctime = entry.stat().st_ctime if args.ctime else None
-                mtime = entry.stat().st_mtime if args.mtime else None
-                yield entry.path, ctime, mtime
+                yield entry.path, entry.stat()
             elif entry.is_dir():
                 yield from files(entry.path)
             else:
@@ -62,7 +54,7 @@ def files(dir):
         return
 
 
-def process_one(path, ctime, mtime, args, con, cur):
+def process_one(path, stat, args, con, cur):
     logging.debug("Processing file: {}".format(path))
 
     h = None
@@ -70,7 +62,12 @@ def process_one(path, ctime, mtime, args, con, cur):
     d = None
 
     with open(path, "rb") as f:
-        with mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ) as m:
+        if stat.st_size > 0:
+            mm = mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ)
+        else:
+            mm = f
+
+        with mm as m:
             if args.hash:
                 try:
                     logging.debug("Hashing {}".format(path))
@@ -149,6 +146,9 @@ def process_one(path, ctime, mtime, args, con, cur):
             stats.skipped_file_hashes += 1
             return
 
+    ctime = stat.st_ctime if args.ctime else None
+    mtime = stat.st_mtime if args.mtime else None
+
     with con:
         cur.execute(
             """INSERT INTO files (path, hash, crc, dropbox_content_hash, ctime, mtime) VALUES (:path, :hash, :crc, :dropbox_content_hash, :ctime, :mtime)""",
@@ -188,7 +188,12 @@ def process_batch(batch, args, con, cur):
     else:
         new_files = batch
 
-    for path, mtime, ctime in new_files:
+    for path, stat in new_files:
+        if args.skip_empty_files and stat.st_size == 0:
+            logging.debug("Skipping empty file: {}".format(path))
+            stats.empty_files += 1
+            report.empty_files.append(path)
+            continue
         if args.include:
             if not fnmatch.fnmatch(path, args.include):
                 continue
@@ -196,7 +201,7 @@ def process_batch(batch, args, con, cur):
             if fnmatch.fnmatch(path, args.exclude):
                 continue
 
-        process_one(path, mtime, ctime, args, con, cur)
+        process_one(path, stat, args, con, cur)
 
 
 def process_directory(directory, args, con, cur):
@@ -252,6 +257,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--include", type=str)
     parser.add_argument("--exclude", type=str)
+    parser.add_argument(
+        "--skip-empty-files",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
 
     args = parser.parse_args()
 
