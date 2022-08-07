@@ -1,5 +1,6 @@
 import argparse
 import logging
+import fnmatch
 import mmap
 import os
 import sqlite3
@@ -188,6 +189,10 @@ def process_batch(batch, args, con, cur):
         new_files = batch
 
     for path, mtime, ctime in new_files:
+        if args.include:
+            if not fnmatch.fnmatch(path, args.include):
+                continue
+
         process_one(path, mtime, ctime, args, con, cur)
 
 
@@ -242,6 +247,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ctime", action=argparse.BooleanOptionalAction, default=True
     )
+    parser.add_argument("--include", type=str)
 
     args = parser.parse_args()
 
