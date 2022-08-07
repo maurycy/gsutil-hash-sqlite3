@@ -192,6 +192,9 @@ def process_batch(batch, args, con, cur):
         if args.include:
             if not fnmatch.fnmatch(path, args.include):
                 continue
+        if args.exclude:
+            if fnmatch.fnmatch(path, args.exclude):
+                continue
 
         process_one(path, mtime, ctime, args, con, cur)
 
@@ -248,6 +251,7 @@ if __name__ == "__main__":
         "--ctime", action=argparse.BooleanOptionalAction, default=True
     )
     parser.add_argument("--include", type=str)
+    parser.add_argument("--exclude", type=str)
 
     args = parser.parse_args()
 
