@@ -207,16 +207,17 @@ def process_batch(batch, args, con, cur):
 def process_directory(directory, args, con, cur):
     files_batch = []
 
-    for path in files(os.path.abspath(directory)):
-        logging.debug(path)
+    for file in files(os.path.abspath(directory)):
+        logging.debug(file)
         stats.files += 1
 
-        files_batch.append(path)
+        files_batch.append(file)
         if len(files_batch) >= args.batch_size:
             process_batch(files_batch, args, con, cur)
             files_batch = []
 
     if len(files_batch) > 0:
+        stats.files += len(files_batch)
         process_batch(files_batch, args, con, cur)
 
 
