@@ -1,6 +1,6 @@
+import base64
 import hashlib
 import io
-import base64
 
 DESCRIPTION = "Base64-encoded MD5 hash"
 

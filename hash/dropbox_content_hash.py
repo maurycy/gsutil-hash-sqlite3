@@ -6,8 +6,9 @@ from __future__ import (
 )
 
 import hashlib
-import six
 import io
+
+import six
 
 
 # Copyright (c) 2017 Dropbox, Inc.
@@ -63,9 +64,9 @@ class DropboxContentHasher(object):
                 "can't use this object anymore; you already called digest()"
             )
 
-        assert isinstance(
-            new_data, six.binary_type
-        ), "Expecting a byte string, got {!r}".format(new_data)
+        assert isinstance(new_data, six.binary_type), (
+            "Expecting a byte string, got {!r}".format(new_data)
+        )
 
         new_data_pos = 0
         while new_data_pos < len(new_data):
@@ -92,9 +93,7 @@ class DropboxContentHasher(object):
             self._overall_hasher.update(self._block_hasher.digest())
             self._block_hasher = None
         h = self._overall_hasher
-        self._overall_hasher = (
-            None  # Make sure we can't use this object anymore.
-        )
+        self._overall_hasher = None  # Make sure we can't use this object anymore.
         return h
 
     def digest(self):

@@ -1,6 +1,7 @@
-import crcmod
-import io
 import base64
+import io
+
+import crcmod
 
 DESCRIPTION = "Base64-encoded CRC-32C"
 
