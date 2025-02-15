@@ -1,5 +1,4 @@
 import argparse
-import re
 import sqlite3
 
 parser = argparse.ArgumentParser()
@@ -44,15 +43,13 @@ CREATE TABLE details (
                 # Remove the trailing :
                 url = line[:-1]
 
-                cur.execute(
-                    "INSERT INTO urls (url) VALUES (:url)", {"url": url}
-                )
+                cur.execute("INSERT INTO urls (url) VALUES (:url)", {"url": url})
                 con.commit()
 
                 url_id = cur.lastrowid
             else:
-                assert url != None
-                assert url_id != None
+                assert url is not None
+                assert url_id is not None
 
                 chunks = line.split(":")
                 key = chunks[0].strip()

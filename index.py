@@ -1,14 +1,14 @@
 import argparse
-import logging
 import fnmatch
+import logging
 import mmap
 import os
 import sqlite3
 import sys
 import time
 
-import hash.dropbox_content_hash
 import hash.crc32
+import hash.dropbox_content_hash
 import hash.md5
 
 
@@ -76,16 +76,12 @@ def process_one(path, stat, args, con, cur):
                     start = time.process_time()
                     h, bytes = hash.md5.hash(m)
                     end = time.process_time()
-                    logging.debug(
-                        "Hashed {} in {}s".format(path, end - start)
-                    )
+                    logging.debug("Hashed {} in {}s".format(path, end - start))
 
                     stats.hashes += 1
                     stats.bytes += bytes
                 except Exception as e:
-                    logging.warning(
-                        "Failed to hash {}: {}".format(path, str(e))
-                    )
+                    logging.warning("Failed to hash {}: {}".format(path, str(e)))
                     stats.exceptions += 1
                     report.exceptions.append(e)
                     return
@@ -103,9 +99,7 @@ def process_one(path, stat, args, con, cur):
                     stats.crcs += 1
                     stats.bytes += bytes
                 except Exception as e:
-                    logging.warning(
-                        "Failed to crc {}: {}".format(path, str(e))
-                    )
+                    logging.warning("Failed to crc {}: {}".format(path, str(e)))
                     stats.exceptions += 1
                     report.exceptions.append(e)
                     return
@@ -119,18 +113,14 @@ def process_one(path, stat, args, con, cur):
                     d, bytes = hash.dropbox_content_hash.hash(m)
                     end = time.process_time()
                     logging.debug(
-                        "Dropbox content hashed {} in {}s".format(
-                            path, end - start
-                        )
+                        "Dropbox content hashed {} in {}s".format(path, end - start)
                     )
 
                     stats.dropbox_content_hashes += 1
                     stats.bytes += bytes
                 except Exception as e:
                     logging.warning(
-                        "Failed to dropbox content hash {}: {}".format(
-                            path, str(e)
-                        )
+                        "Failed to dropbox content hash {}: {}".format(path, str(e))
                     )
                     stats.exceptions += 1
                     report.exceptions.append(e)
@@ -180,9 +170,7 @@ def process_batch(batch, args, con, cur):
         new_files = list(set(batch) - duplicate_files)
 
         if len(duplicate_files) > 0:
-            logging.debug(
-                "Skipping duplicate file: {}".format(duplicate_files)
-            )
+            logging.debug("Skipping duplicate file: {}".format(duplicate_files))
             stats.skipped_files += len(duplicate_files)
 
         new_files = new_files
@@ -222,39 +210,25 @@ def process_directory(directory, args, con, cur):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "directories", metavar="directory", type=str, nargs="+"
-    )
+    parser.add_argument("directories", metavar="directory", type=str, nargs="+")
     parser.add_argument("--database", type=str, default="db.sqlite3")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction)
     parser.add_argument("--summary", action=argparse.BooleanOptionalAction)
     parser.add_argument("--report", action=argparse.BooleanOptionalAction)
-    parser.add_argument(
-        "--skip-duplicate-files", action=argparse.BooleanOptionalAction
-    )
+    parser.add_argument("--skip-duplicate-files", action=argparse.BooleanOptionalAction)
     parser.add_argument(
         "--skip-duplicate-file-hashes", action=argparse.BooleanOptionalAction
     )
-    parser.add_argument(
-        "--batch-size", type=int, default=DEFAULT_FILES_BATCH_SIZE
-    )
-    parser.add_argument(
-        "--hash", action=argparse.BooleanOptionalAction, default=True
-    )
-    parser.add_argument(
-        "--crc", action=argparse.BooleanOptionalAction, default=True
-    )
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_FILES_BATCH_SIZE)
+    parser.add_argument("--hash", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--crc", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--dropbox-content-hash",
         action=argparse.BooleanOptionalAction,
         default=True,
     )
-    parser.add_argument(
-        "--mtime", action=argparse.BooleanOptionalAction, default=True
-    )
-    parser.add_argument(
-        "--ctime", action=argparse.BooleanOptionalAction, default=True
-    )
+    parser.add_argument("--mtime", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--ctime", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--include", type=str)
     parser.add_argument("--exclude", type=str)
     parser.add_argument(

@@ -1,8 +1,8 @@
 import argparse
+import collections
 import logging
 import sqlite3
 import sys
-import collections
 
 
 # https://stackoverflow.com/a/48359027
@@ -27,9 +27,7 @@ WHERE
         EXCEPT
         SELECT DISTINCT crc FROM files WHERE path LIKE '{}%'
     )
-""".format(
-            args.source, args.source, args.target
-        )
+""".format(args.source, args.source, args.target)
     )
     for row in cur.fetchall():
         yield row
